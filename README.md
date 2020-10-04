@@ -1,2 +1,5 @@
-# instability_forecasting
-Forecasting political instability using machine learning methods.
+# Forecasting Political Instability
+
+We aim to develop an ensemble model consisting of constituent models that each perform prediction using a subset of the variables. Essentially, we will be considering different factors to inform multiple predictions of national violence and instability, then combine these predictions into a resultant probability of conflict. Examples of constituent models that we may explore include regression on conflict history, modeling of natural resources or disease, or trends of civil unrest. Particularly, we will be building out machine learning models in Python to generate predictions from the input data.
+
+After attaining constituent model results, we aim to use some form of Bayesian Model Averaging to aggregate them. In addition, we plan to visualize our results by generating graphs that help to understand the interplay of important indicator variables and violence. For example, we could create heat maps comparing the densities of the most relevant predictor variables from our models to the density of historical violence within each country. Ultimately, the result of this project will be a series of models which, when combined, output a singular likelihood of national violence/instability for each nation considered.
