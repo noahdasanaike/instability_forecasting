@@ -10,11 +10,11 @@ After attaining constituent model results, we aim to use some form of Bayesian M
 
 The following variables are from the World Bank and recommended by the Uppsala Data Program as indicators of conflict:
 
-a. GDP per Capita in 2017 PPP
-b. Population
-c. Oil Rent as % of GDP
-d. Oil Rent per GDP Capita
-e. GDP per Capita without Oil Rent
+- GDP per Capita in 2017 PPP
+- Population
+- Oil Rent as % of GDP
+- Oil Rent per GDP Capita
+- GDP per Capita without Oil Rent
 
 ### V-Dem: Varieties of Democracy
 
@@ -34,14 +34,14 @@ Using the Uppsala Conflict Data Program repository, we download all individual e
 
 The Correlates of War Project maintains data across several categories, though the time series are somewhat limited; the most relevant are:
 
-a. War Data, 1816 - 2007
-b. National Material Capabilities, 1816-2012
+- War Data, 1816 - 2007
+- National Material Capabilities, 1816-2012
 
 with the latter being relevant due to power as a central concept in explaining conflict, and containing the following variables:
 
-a. Military Expenditure
-b. Military Personnel
-c. Energy Consumption
-d. Iron and Steel Production
-e. Urban Population
-f. Total Population
+- Military Expenditure
+- Military Personnel
+- Energy Consumption
+- Iron and Steel Production
+- Urban Population
+- Total Population

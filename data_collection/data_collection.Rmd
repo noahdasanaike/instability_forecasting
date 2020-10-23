@@ -1,12 +1,11 @@
 ---
-title: "R Notebook"
+title: "Data Collection File"
 output: html_notebook
 ---
 
-```{r}
-# Need to run devtools::install_github("vdeminstitute/vdemdata")
-# # https://ucdp.uu.se/downloads/ 
+Need to run devtools::install_github("vdeminstitute/vdemdata")
 
+```{r set_up}
 library(tidyverse)
 library(janitor)
 library(vdemdata)
@@ -27,9 +26,14 @@ country_code <- read_excel("ViEWS/country_code.xls", skip = 2) %>%
   clean_names() %>%
   rename(country_code = iso_alpha_3_code,
          country_name = country_or_area_name)
+```
 
 
+## World Bank Indicators
+https://databank.worldbank.org/source/world-development-indicators#
 
+```{r world_bank}
+####################################################################
 # POPULATION DATA
 
 population <- read_csv("ViEWS/population.csv") %>%
@@ -52,9 +56,7 @@ population_fixed <- population %>%
          pop_ln = log(pop))
 
 
-
-
-
+####################################################################
 # GDP PER CAPITA, 2017 PPP
 
 # Read in data
@@ -78,9 +80,7 @@ gdp_2017_fixed <- gdp_2017 %>%
          gdp_ln = log(gdp))
 
 
-
-
-
+####################################################################
 # OIL RENTS
 
 # Read in data
@@ -101,13 +101,14 @@ oil_rents_fixed <- oil_rents %>%
   pivot_longer(cols = -c(country_name, country_code), 
                names_to = "year", values_to = "rent_perc") %>%
   mutate(rent_perc = as.numeric(rent_perc) / 100)
+```
 
+## V-DEM Democracy Index
 
+Autocracy and Democracy Categorization
+https://www.v-dem.net/files/5/Regimes%20of%20the%20World%20-%20Final.pdf
 
-
-
-# DEMOCRACY INDEX
-
+```{r vdem}
 # Read in data from VDEM library, select columns identified by VDEM as being 
 # relevant to identifying regime type
 
@@ -130,11 +131,11 @@ regime_type <- vdem %>%
     v2x_polyarchy >= 0.5 ~ "democracy")) %>%
   select(country_name, country_text_id, year, regime_type) %>%
   rename(country_code = country_text_id)
+```
 
+## First Data Merge (for testing)
 
-
-
-# MERGE ALL DATA
+```{r merge_a}
 
 full_data <- gdp_2017_fixed %>%
   merge(oil_rents_fixed, all = TRUE, 
@@ -151,14 +152,12 @@ full_data <- gdp_2017_fixed %>%
 full_data <- full_data %>%
   arrange(country_code, year) %>%
   drop_na(country_name)
+```
 
+## ACLED CONFLICT DATA
+https://acleddata.com/data-export-tool/
 
-
-
-
-
-# ACLED CONFLICT DATA
-
+```{r acled}
 # This is the code used to create acled_modified from the original datafile:
 
 # acled_data <- read_csv("data/ViEWS/acled_data.csv") %>%
@@ -183,29 +182,37 @@ full_data <- full_data %>%
   select(-c(country_name.y)) %>%
   rename(alt_name = country_name.x) %>%
   rename(acled_events = event)
+```
 
+## CORRELATES OF WAR
 
+```{r correlates}
+# https://correlatesofwar.org/data-sets
+```
 
+## UCDP ORGANIZED EVENTS
+https://ucdp.uu.se/downloads/
 
+```{r ucdp}
+# These are used to create ucdp_modified.csv 
 
+# organized <- read_csv("ViEWS/ged201.csv") %>%
+#  rowwise() %>%
+#  mutate(country_code = str_split(relid, pattern = "-")[[1]][1]) %>%
+#  group_by(country_code, year) %>%
+#  summarize(ucdp_events = n())
 
-# UCDP ORGANIZED EVENTS
-
-organized <- read_csv("ViEWS/ged201.csv") %>%
-  rowwise() %>%
-  mutate(country_code = str_split(relid, pattern = "-")[[1]][1]) %>%
-  group_by(country_code, year) %>%
-  summarize(ucdp_events = n())
+organized <- read_csv("ViEWS/ucdp_modified.csv")
 
 full_data <- full_data %>%
   merge(organized, by = c("country_code", "year"), all = TRUE)
+```
 
 
+## WORLD BANK PEACE DATA
 
 
-
-
-
+```{r peace_data}
 # WORLD BANK PEACE DATA
 
 # Need to add all iso codes, some missing; don't merge yet
@@ -222,55 +229,15 @@ peace_months_fixed <- peace_months %>%
 
 peace_months_fixed = peace_months_fixed[-1,]
 peace_months_fixed$peaceyears[is.na(peace_months_fixed$peaceyears)] <- 0
+```
 
 
-
-
+```{r write}
 # WRITE TO CSV
 
-write_csv(full_data, path = "ViEWS/full_data.csv")
-drop_delete(path = "political_data")
-drop_upload(file = "ViEWS/full_data.csv", path = "political_data")
-
+# write_csv(full_data, path = "ViEWS/full_data.csv")
+# drop_delete(path = "political_data")
+# drop_upload(file = "ViEWS/full_data.csv", path = "political_data")
 ```
 
-```{r}
-# map test
-
-library(leaflet)
-library(rgdal)
-
-world_spdf <- readOGR(
-  dsn = paste0("map_files/"), 
-  layer = "TM_WORLD_BORDERS_SIMPL-0.3",
-  verbose = FALSE)
-        
-filter_var = input$map_var
-        
-map_subset <- full_data %>%
-  filter(variable == filter_var, year == input$map_year) %>%
-  pivot_wider(names_from = variable, values_from = var_value)
-        
-world_spdf@data <- world_spdf@data %>%
-  rename(country_code = "ISO3") %>%
-  merge(map_subset, by = "country_code", keep.x = TRUE)
-        
-qpal <- colorQuantile("Reds", na.omit(map_subset[ncol(map_subset)]), n = 7)
-        
-leaflet(world_spdf) %>% 
-  addTiles()  %>% 
-  setView(lat = 10, lng = 0, zoom = 2) %>%
-  addPolygons( 
-    color = ~qpal(eval(as.symbol(input$map_var))),
-    stroke = TRUE, 
-    fillOpacity = 0.9, 
-    weight = 0.3,
-    labelOptions = labelOptions( 
-      style = list("font-weight" = "normal", padding = "3px 8px"), 
-      textsize = "13px", 
-      direction = "auto"))
 ```
-
-
-
-
