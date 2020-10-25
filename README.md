@@ -6,6 +6,23 @@ After attaining constituent model results, we aim to use some form of Bayesian M
 
 ## Variables in Use
 
+### Uniformity
+
+In order to establish uniformity across variables, we categorize them by CAMEO event codes as follows:
+
+GDELT
+- Categories 14-20 are pulled
+
+ACLED
+- 14: Protests and riots
+- 18: Violence against Civilians
+- 19: Explosions/remote violence; Battles
+
+UCDP:
+- 18: One-Sided Violence
+- 19: Non-State Conflict
+- 19: State-Based Conflict
+
 ### World Bank Indicators
 
 The following variables are from the World Bank and recommended by the Uppsala Data Program as indicators of conflict:
