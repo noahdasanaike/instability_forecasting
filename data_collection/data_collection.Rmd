@@ -11,6 +11,7 @@ library(janitor)
 library(vdemdata)
 library(readxl)
 library(rdrop2)
+library(states)
 
 # Read in Dropbox token
 
@@ -75,9 +76,9 @@ colnames(gdp_2017) <- c("country_name", "country_code",
 gdp_2017_fixed <- gdp_2017 %>%
   select(-c(series_name, series_code, "2020")) %>%
   pivot_longer(cols = -c(country_name, country_code), 
-               names_to = "year", values_to = "gdp") %>%
-  mutate(gdp = as.numeric(gdp),
-         gdp_ln = log(gdp))
+               names_to = "year", values_to = "gdp_cap") %>%
+  mutate(gdp_cap = as.numeric(gdp_cap),
+         gdp_cap_ln = log(gdp_cap))
 
 
 ####################################################################
@@ -116,43 +117,54 @@ dem_data <- vdem %>%
   select(country_name, country_text_id, year, v2x_polyarchy, 
          v2x_partip, v2x_liberal) %>%
   group_by(country_name, country_text_id, year) %>%
-  summarize(dem_index = (v2x_polyarchy + v2x_partip + v2x_liberal) / 3) %>%
+  summarize(dem_index = mean(c(v2x_polyarchy + v2x_partip + v2x_liberal), na.rm = TRUE)) %>%
   rename(country_code = country_text_id)
 
-# Define as autocracy or democracy
+# Define as autocracy or type of democracy
 
 regime_type <- vdem %>%
   select(country_name, country_text_id, year, 
-         v2elmulpar_osp, v2elfrfair_osp, v2x_polyarchy) %>%
+         v2elmulpar_osp, v2elfrfair_osp, v2x_polyarchy,
+         v2clacjstm_osp, v2clacjstw_osp, v2x_liberal) %>%
   mutate(regime_type = case_when(
     v2elmulpar_osp < 2 ~ "autocracy",
     v2elfrfair_osp < 2 ~ "autocracy",
     v2x_polyarchy < 0.5 ~ "autocracy",
-    v2x_polyarchy >= 0.5 ~ "democracy")) %>%
+    v2x_polyarchy < 0.5 ~ "autocracy",
+    v2clacjstm_osp < 3 ~ "semi-democracy",
+    v2clacjstw_osp < 3 ~ "semi-democracy",
+    v2x_liberal < 0.8 ~ "semi-democracy",
+    TRUE ~ "democracy")) %>%
   select(country_name, country_text_id, year, regime_type) %>%
-  rename(country_code = country_text_id)
+  rename(country_code = country_text_id) %>%
+  mutate(value = 1) %>%
+  pivot_wider(names_from = "regime_type", values_from = "value")
+
+regime_type[is.na(regime_type)] <- 0
 ```
 
 ## First Data Merge (for testing)
 
 ```{r merge_a}
 
-full_data <- gdp_2017_fixed %>%
+country_predictors <- gdp_2017_fixed %>%
   merge(oil_rents_fixed, all = TRUE, 
         by = c("country_name", "year", "country_code")) %>%
   merge(population_fixed, all = TRUE, 
         by = c("country_name", "year", "country_code")) %>%
-  mutate(rent_cap = gdp * rent_perc,
-         cap_no_rent = gdp - rent_cap) %>%
-  merge(subset(dem_data, year >= 1960), all = TRUE, 
+  mutate(rent_cap = gdp_cap * rent_perc,
+         cap_no_rent = gdp_cap - rent_cap) %>%
+  merge(dem_data[,2:4], all = TRUE, 
         by = c("year", "country_code")) %>%
-  merge(subset(regime_type, year >= 1960), all = TRUE, 
+  merge(regime_type[,2:6], all = TRUE, 
         by = c("year", "country_code"))
 
-full_data <- full_data %>%
+country_predictors <- country_predictors %>%
   arrange(country_code, year) %>%
   drop_na(country_name)
 ```
+
+# Conflict Data
 
 ## ACLED CONFLICT DATA
 https://acleddata.com/data-export-tool/
@@ -160,28 +172,30 @@ https://acleddata.com/data-export-tool/
 ```{r acled}
 # This is the code used to create acled_modified from the original datafile:
 
-# acled_data <- read_csv("data/ViEWS/acled_data.csv") %>%
+# acled_data <- read_csv("ViEWS/acled_data.csv") %>%
 #   clean_names() %>%
 #   select(year, event_type, country, iso3)
-
-# acled_fixed <- acled %>%
-#   group_by(year, iso3) %>%
-#   summarize(event = ifelse(n() > 0, n(), 0)) %>%
+#   
+# acled_fixed <- acled_data %>%
+#   filter(!event_type == "Strategic developments") %>%
+#   mutate(event_type = case_when(
+#     (event_type %in% c("Protests", "Riots")) ~ 14,
+#     (event_type == "Violence against civilians") ~ 18,
+#     (event_type %in% c("Battles", "Explosions/Remote violence")) ~ 19)) %>%
+#   group_by(year, iso3, event_type) %>%
+#   summarize(total = n()) %>%
 #   rename(country_code = iso3)
 
-# write_csv(acled_fixed, path = "data/ViEWS/acled_modified.csv")
+# write_csv(acled_fixed, path = "ViEWS/acled_modified.csv")
 
 # Read in ACLED
 
-acled_fixed <- read_csv("ViEWS/acled_modified.csv")
+acled_fixed <- read_csv("ViEWS/acled_modified.csv") %>%
+  rename(acled_total = total)
 
 # Merge ACLED with full_data
 
-full_data <- full_data %>%
-  merge(acled_fixed, by = c("country_code", "year"), all = TRUE) %>%
-  select(-c(country_name.y)) %>%
-  rename(alt_name = country_name.x) %>%
-  rename(acled_events = event)
+conflict_data <- acled_fixed
 ```
 
 ## CORRELATES OF WAR
@@ -194,18 +208,25 @@ full_data <- full_data %>%
 https://ucdp.uu.se/downloads/
 
 ```{r ucdp}
-# These are used to create ucdp_modified.csv 
+# Create data from original data file
 
-# organized <- read_csv("ViEWS/ged201.csv") %>%
-#  rowwise() %>%
-#  mutate(country_code = str_split(relid, pattern = "-")[[1]][1]) %>%
-#  group_by(country_code, year) %>%
-#  summarize(ucdp_events = n())
+organized <- read_csv("ViEWS/full_data/ged201.csv") %>%
+  select(year, type_of_violence, country_id) %>%
+  rename(cowcode = country_id) %>%
+  merge(cowstates, by = "cowcode", all.x = TRUE) %>%
+  select(type_of_violence, cow3c, year) %>%
+  rename(country_code = cow3c) %>%
+  group_by(country_code, year, type_of_violence) %>%
+  mutate(type_of_violence = type_of_violence,
+         type_of_violence = case_when(
+           type_of_violence == 1 ~ 19,
+           type_of_violence == 2 ~ 19,
+           type_of_violence == 3 ~ 18)) %>%
+  summarize(ucdp_total = n()) %>%
+  rename(event_type = type_of_violence)
 
-organized <- read_csv("ViEWS/ucdp_modified.csv")
-
-full_data <- full_data %>%
-  merge(organized, by = c("country_code", "year"), all = TRUE)
+conflict_data <- conflict_data %>%
+  merge(organized, by = c("country_code", "year", "event_type"), all = TRUE)
 ```
 
 
