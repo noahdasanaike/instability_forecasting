@@ -29,11 +29,13 @@ country_code <- read_excel("ViEWS/country_code.xls", skip = 2) %>%
          country_name = country_or_area_name)
 ```
 
+# FIRST: COUNTRY PREDICTORS
+(then conflict data)
 
 ## World Bank Indicators
 https://databank.worldbank.org/source/world-development-indicators#
 
-```{r world_bank}
+```{r worldbank}
 ####################################################################
 # POPULATION DATA
 
@@ -102,6 +104,55 @@ oil_rents_fixed <- oil_rents %>%
   pivot_longer(cols = -c(country_name, country_code), 
                names_to = "year", values_to = "rent_perc") %>%
   mutate(rent_perc = as.numeric(rent_perc) / 100)
+
+
+## SECOND SET OF DATA
+
+second_data <- read_csv("ViEWS/second_world_bank.csv") %>%
+  clean_names()
+
+# Fix naming of year columns
+
+colnames(second_data) <- c("country_name", "country_code", 
+                                          "series_name", "series_code", 
+                        substring(colnames(second_data[5:ncol(second_data)]), 2, 5))
+
+# Fix by creating a column for year, removing excess columns, take log 
+
+second_data_fixed <- second_data
+
+####################################################################
+# URBAN PERC
+
+urban_perc <- second_data_fixed %>%
+  filter(series_name == "Urban population (% of total population)") %>%
+  select(-c(series_name, series_code, "2020")) %>%
+  pivot_longer(cols = -c(country_name, country_code), 
+               names_to = "year", values_to = "urban_perc")
+
+####################################################################
+# NOT WORKING AGE
+not_working_age_perc <- second_data_fixed %>%
+  filter(series_name == "Population ages 15-64 (% of total population)") %>%
+  select(-c(series_name, series_code, "2020")) %>%
+  pivot_longer(cols = -c(country_name, country_code), 
+               names_to = "year", values_to = "working_age_perc") %>%
+  rowwise() %>%
+  mutate(working_age_perc = as.numeric(working_age_perc))
+
+not_wrkage_perc <- not_working_age_perc %>%
+  mutate(not_working_age_perc = (100 - working_age_perc)) %>%
+  select(-c("working_age_perc"))
+####################################################################
+# GDP CAPITA GROWTH
+
+gdp_cap_growth <- second_data_fixed %>%
+  filter(series_name == "GDP per capita growth (annual %)") %>%
+  select(-c(series_name, series_code, "2020")) %>%
+  pivot_longer(cols = -c(country_name, country_code), 
+               names_to = "year", values_to = "gdp_cap_growth") %>%
+  rowwise() %>%
+  mutate(gdp_cap_growth = as.numeric(gdp_cap_growth))
 ```
 
 ## V-DEM Democracy Index
@@ -117,7 +168,8 @@ dem_data <- vdem %>%
   select(country_name, country_text_id, year, v2x_polyarchy, 
          v2x_partip, v2x_liberal) %>%
   group_by(country_name, country_text_id, year) %>%
-  summarize(dem_index = mean(c(v2x_polyarchy + v2x_partip + v2x_liberal), na.rm = TRUE)) %>%
+  rowwise() %>%
+  summarize(dem_index = mean(c(v2x_polyarchy, v2x_partip, v2x_liberal), na.rm = TRUE)) %>%
   rename(country_code = country_text_id)
 
 # Define as autocracy or type of democracy
@@ -143,7 +195,27 @@ regime_type <- vdem %>%
 regime_type[is.na(regime_type)] <- 0
 ```
 
-## First Data Merge (for testing)
+## WORLD BANK PEACE DATA
+
+
+```{r peace_data}
+# WORLD BANK PEACE DATA
+
+peace_months <- read_excel("ViEWS/peace_months.xls")
+
+peace_months_fixed <- peace_months %>%
+  select(country, year, peaceyears) %>%
+  rename(country_name = country) %>%
+  merge(country_code, by = "country_name", all.x = TRUE) %>%
+  select(-c(country_name)) %>%
+  mutate(year = as.character(year)) %>%
+  drop_na(year, country_code)
+
+peace_months_fixed = peace_months_fixed[-1,]
+peace_months_fixed$peaceyears[is.na(peace_months_fixed$peaceyears)] <- 0
+```
+
+## Country Predictor Merge
 
 ```{r merge_a}
 
@@ -152,21 +224,32 @@ country_predictors <- gdp_2017_fixed %>%
         by = c("country_name", "year", "country_code")) %>%
   merge(population_fixed, all = TRUE, 
         by = c("country_name", "year", "country_code")) %>%
+  merge(urban_perc[,2:4], all = TRUE,
+        by = c("country_code", "year")) %>%
+  merge(gdp_cap_growth[,2:4], all = TRUE,
+        by = c("country_code", "year")) %>%
+  merge(not_wrkage_perc[,2:4], all = TRUE,
+        by = c("country_code", "year")) %>%
   mutate(rent_cap = gdp_cap * rent_perc,
          cap_no_rent = gdp_cap - rent_cap) %>%
   merge(dem_data[,2:4], all = TRUE, 
         by = c("year", "country_code")) %>%
   merge(regime_type[,2:6], all = TRUE, 
-        by = c("year", "country_code"))
+        by = c("year", "country_code")) %>%
+  merge(peace_months_fixed, all = TRUE,
+        by = c("country_code", "year"))
 
 country_predictors <- country_predictors %>%
   arrange(country_code, year) %>%
-  drop_na(country_name)
+  drop_na(country_name) %>%
+  rowwise() %>%
+  mutate(gdp_cap_growth_rent = gdp_cap_growth * rent_perc,
+         gdp_cap_growth_no_rent = gdp_cap_growth * (1 - rent_perc))
 ```
 
-# Conflict Data
+# SECOND: CONFLICT DATA
 
-## ACLED CONFLICT DATA
+## ACLED
 https://acleddata.com/data-export-tool/
 
 ```{r acled}
@@ -230,35 +313,14 @@ conflict_data <- conflict_data %>%
 ```
 
 
-## WORLD BANK PEACE DATA
-
-
-```{r peace_data}
-# WORLD BANK PEACE DATA
-
-# Need to add all iso codes, some missing; don't merge yet
-
-peace_months <- read_excel("ViEWS/peace_months.xls")
-
-peace_months_fixed <- peace_months %>%
-  select(country, year, peaceyears) %>%
-  rename(country_name = country) %>%
-  merge(country_code, by = "country_name", all.x = TRUE) %>%
-  select(-c(country_name)) %>%
-  mutate(year = as.character(year)) %>%
-  drop_na(year, country_code)
-
-peace_months_fixed = peace_months_fixed[-1,]
-peace_months_fixed$peaceyears[is.na(peace_months_fixed$peaceyears)] <- 0
-```
-
-
 ```{r write}
 # WRITE TO CSV
 
-# write_csv(full_data, path = "ViEWS/full_data.csv")
-# drop_delete(path = "political_data")
-# drop_upload(file = "ViEWS/full_data.csv", path = "political_data")
+# Country Predictors
+
+write_csv(country_predictors, path = "ViEWS/country_predictors.csv")
+drop_delete(path = "political_data")
+drop_upload(file = "ViEWS/full_data.csv", path = "political_data")
 ```
 
 ```
