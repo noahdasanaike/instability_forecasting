@@ -8,7 +8,7 @@ After attaining constituent model results, we aim to use some form of Bayesian M
 
 ### Uniformity
 
-In order to establish uniformity across variables, we categorize them by CAMEO event codes as follows:
+In order to establish uniformity across conflict variables, we categorize them by CAMEO event codes as follows:
 
 GDELT
 - Categories 14-20 are pulled
@@ -32,6 +32,16 @@ The following variables are from the World Bank and recommended by the Uppsala D
 - Oil Rent as % of GDP
 - Oil Rent per GDP Capita
 - GDP per Capita without Oil Rent
+
+### Other Country-Level Predictors
+
+These are pulled from various sources:
+
+- Number of Years in Peace
+- Proportion of Population Not in Working Age
+- Proportion of Population Living in Urban Areas
+- Growth in GDP per Capita (% from Last Year), Oil Rents Only
+- Growth in GDP per Capita (% from Last Year), Oil Rents Excluded
 
 ### V-Dem: Varieties of Democracy
 
