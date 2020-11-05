@@ -12,6 +12,7 @@ library(vdemdata)
 library(readxl)
 library(rdrop2)
 library(states)
+library(countrycode)
 
 # Read in Dropbox token
 
@@ -311,7 +312,29 @@ organized <- read_csv("ViEWS/full_data/ged201.csv") %>%
 conflict_data <- conflict_data %>%
   merge(organized, by = c("country_code", "year", "event_type"), all = TRUE)
 ```
+```{r gdelt}
+# Create data from original data file
 
+countrycodes <- codelist %>%
+  select(fips, iso3c)
+
+gdelt <- read_csv("ViEWS/gdelt.csv") %>%
+  select(SQLDATE, ActionGeo_CountryCode, EventRootCode) %>%
+  mutate(date = as.Date(SQLDATE, format = ("%b %d, %Y"))) %>%
+  rowwise() %>%
+  mutate(year = substr(date, start = 1, stop = 4)) %>%
+  rename(fips = ActionGeo_CountryCode) %>%
+  merge(countrycodes, by = "fips", all.x = TRUE) %>%
+  select(iso3c, year, EventRootCode) %>%
+  rename(country_code = iso3c,
+         event_type = EventRootCode) %>%
+  group_by(country_code, year, event_type) %>%
+  summarize(gdelt_total = n())
+
+conflict_data <- conflict_data %>%
+  merge(gdelt, by = c("country_code", "year", "event_type"), all = TRUE)
+
+```
 
 ```{r write}
 # WRITE TO CSV
@@ -320,7 +343,13 @@ conflict_data <- conflict_data %>%
 
 write_csv(country_predictors, path = "ViEWS/country_predictors.csv")
 drop_delete(path = "political_data")
-drop_upload(file = "ViEWS/full_data.csv", path = "political_data")
+drop_upload(file = "ViEWS/country_predictors.csv", path = "political_data")
+
+# Conflict
+
+write_csv(conflict_data, path = "ViEWS/conflict_data.csv")
+drop_delete(path = "political_data")
+drop_upload(file = "ViEWS/conflict_data.csv", path = "political_data")
 ```
 
 ```
