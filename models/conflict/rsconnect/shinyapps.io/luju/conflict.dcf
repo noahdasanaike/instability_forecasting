@@ -1,0 +1,10 @@
+name: conflict
+title:
+username:
+account: luju
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 3185133
+bundleId: 3832925
+url: https://luju.shinyapps.io/conflict/
+when: 1604806438.2848

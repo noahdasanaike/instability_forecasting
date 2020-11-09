@@ -1,0 +1,10 @@
+name: prediction
+title:
+username:
+account: luju
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 3187013
+bundleId: 3833076
+url: https://luju.shinyapps.io/prediction/
+when: 1604813028.08296
