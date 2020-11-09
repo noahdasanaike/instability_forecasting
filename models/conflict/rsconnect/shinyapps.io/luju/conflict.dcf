@@ -5,6 +5,6 @@ account: luju
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 3185133
-bundleId: 3832925
+bundleId: 3835855
 url: https://luju.shinyapps.io/conflict/
-when: 1604806438.2848
+when: 1604890788.01314

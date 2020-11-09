@@ -11,6 +11,7 @@ suppressPackageStartupMessages(library(rsconnect))
 library(shiny)
 library(forecast)
 library(ggplot2)
+library(rworldmap)
 suppressPackageStartupMessages(library(randomForest))
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -19,6 +20,7 @@ countries <- read.csv("country_names.csv", row.names=1)
 codes <- as.vector(countries$x)
 names(codes) = row.names(countries)
 countries <- codes
+
 
 backup_arima <- function(x, xreg_p=NULL, new_xreg_p=NULL, years_p=15) {
   predictedres <- tryCatch({
@@ -70,8 +72,13 @@ goldstein_data <- goldstein_data[goldstein_data$year!=2020,]
 
 predictors <- read.csv("country_predictors.csv")
 predictors$urban_perc <- as.numeric(predictors$urban_perc)
+#p_vars2 <- predictors[predictors$country_name %in% c("Afghanistan", "Egypt", "Russia", "Syria", "Finland", "Switzerland", "Denmark")]
 p_vars <- subset(predictors, select=-c(country_code, year, country_name, gdp_cap, pop))
 cor(p_vars, use="pairwise.complete.obs")
+
+
+
+
 'predictors <- predictors[predictors$country_code==country,]
 predictors <- subset(predictors, select=-c(country_code, country_name, gdp_cap, pop, gdp_cap_growth_rent, gdp_cap_growth_no_rent))
 
@@ -154,6 +161,7 @@ ui <- fluidPage(
            plotOutput("predictionPlot")
         )
     )
+    
 )
 
 # Define server logic
@@ -206,6 +214,9 @@ server <- function(input, output) {
               axis.text.x=element_text(size = 11))
       p
     })
+    
+    
+    
 }
 
 # Run the application 

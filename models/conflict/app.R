@@ -54,6 +54,8 @@ goldstein_data$weighted <- goldstein_data$weighted
 goldstein_data <- data.frame(goldstein_data)
 write.csv(goldstein_data, "goldstein_data.csv")
 
+rangeofyears <- sort(unique(goldstein_data$year), decreasing=TRUE)
+
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ui <- fluidPage(
@@ -107,6 +109,26 @@ ui <- fluidPage(
       mainPanel(
         plotOutput("linePlot2")
       )
+    ),
+    
+    sidebarLayout(
+      sidebarPanel(
+        selectInput(
+          "single_year",
+          "Select year",
+          rangeofyears,
+          selected = 2018,
+          multiple = FALSE,
+          selectize = TRUE
+        ),
+        helpText("Intensity of conflict (via Goldstein weighted sum) by year."),
+        helpText("Black indicates country is missing data.")
+      ),
+      
+      # Show a plot of the generated distribution
+      mainPanel(
+        plotOutput("heatMap")
+      )
     )
 )
 
@@ -147,6 +169,17 @@ server <- function(input, output) {
         labs(color="Country")
         #geom_smooth(method="loess", alpha=0.13)
       p
+    })
+    
+    output$heatMap <- renderPlot({
+      year <- as.integer(input$single_year)
+      print(year)
+      mapped_data <- goldstein_data[goldstein_data$year==year,]
+      mapped_data <- joinCountryData2Map(mapped_data, joinCode="ISO3", nameJoinColumn="country_code")
+      par(mai=c(1,0,0.5,0),xaxs="i",yaxs="i")
+      mapCountryData(mapped_data, nameColumnToPlot = "weighted", catMethod="logFixedWidth",
+                     mapTitle=paste("Historical Conflict Intensity by Country in ", year, sep=""),
+                     missingCountryCol="black")
     })
 }
 
