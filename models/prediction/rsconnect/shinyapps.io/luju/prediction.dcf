@@ -5,6 +5,6 @@ account: luju
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 3187013
-bundleId: 3833076
+bundleId: 3835729
 url: https://luju.shinyapps.io/prediction/
-when: 1604813028.08296
+when: 1604887543.82943

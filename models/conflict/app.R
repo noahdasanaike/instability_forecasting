@@ -43,6 +43,7 @@ countries <- na.omit(countries)
 country_names <- countrycode(sourcevar=countries, origin="iso3c", destination="country.name")
 country_names[which(is.na(country_names))] = countries[which(is.na(country_names))]
 names(countries) = country_names
+write.csv(countries, "country_names.csv")
 
 # get weighted sum of goldstein scores for each year and country
 goldstein_data <- new_conflict_data[,c("country_code", "year", "total", "neg_goldstein")]

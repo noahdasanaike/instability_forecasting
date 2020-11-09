@@ -15,19 +15,30 @@ suppressPackageStartupMessages(library(randomForest))
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+countries <- read.csv("country_names.csv", row.names=1)
+codes <- as.vector(countries$x)
+names(codes) = row.names(countries)
+countries <- codes
+
 backup_arima <- function(x, xreg_p=NULL, new_xreg_p=NULL, years_p=15) {
   predictedres <- tryCatch({
     model <- auto.arima(x, xreg=xreg_p)
     if (sum(arimaorder(model))<1) {
+      yr <- tsp(x)[1]:tsp(x)[2]
+      gamma_model <- glm(x~poly(yr, degree=2), data=data.frame(x, yr), family=Gamma)
+      new_yr <- (tsp(x)[2]+1):(tsp(x)[2]+years_p)
+      poly_res <- predict(gamma_model, newdata=data.frame(yr=new_yr), type="response")
+      return(ts(c(x, poly_res), start=tsp(x)[1], end=tsp(x)[2]+years_p))
+      
       # do glm gamma distribution
-      gamma_model <- glm(x~., data=data.frame(xreg_p, x), family=Gamma)
+      'gamma_model <- glm(x~., data=data.frame(xreg_p, x), family=Gamma)
       
       fit.step =step(gamma_model,
                      scope=list(upper=~.,lower=~1, trace=F) )
       fit.step$anova
       attributes(fit.step)
       selected=glm(fit.step$formula, data=data.frame(xreg_p, x), family=Gamma)
-      predict(selected, newdata=data.frame(new_xreg_p), type="response")
+      predict(selected, newdata=data.frame(new_xreg_p), type="response")'
     }
     
     return(forecast(model, xreg=new_xreg_p, h=years_p))
@@ -87,8 +98,8 @@ fit <- auto.arima(univariate, xreg=data.matrix(predictors))'
 
 
 # generate future regressors
-var_extend <- function(var_i, years) { 
-  var_ts <- ts(var_i, start=min(goldstein$year), end=max(goldstein$year))
+var_extend <- function(var_i, years, year_range) { 
+  var_ts <- ts(var_i, start=year_range[1], end=year_range[2])
   res <- backup_arima(var_ts, years_p=years)
   if (class(res)=="forecast") {
     res <- res$mean
@@ -96,10 +107,10 @@ var_extend <- function(var_i, years) {
   as.vector(res)
 }
 
-better_apply <- function(input_pred, years) {
+better_apply <- function(input_pred, years, year_range) {
   output<- NULL
   for (i in 1:ncol(input_pred)) {
-    output= cbind(output, var_extend(input_pred[,i], years))
+    output= cbind(output, var_extend(input_pred[,i], years, year_range))
   }
   colnames(output) = colnames(input_pred)
   return(output)
@@ -150,8 +161,8 @@ server <- function(input, output) {
 
     output$mstlPlot <- renderPlot({
         selection <- input$selection
-        goldstein <- na.omit(goldstein_data[goldstein_data$country_code==selection,])
-        univariate <- ts(goldstein[,"weighted"], start=min(goldstein$year), end=max(goldstein$year))
+        goldstein1 <- na.omit(goldstein_data[goldstein_data$country_code==selection,])
+        univariate <- ts(goldstein1[,"weighted"], start=min(goldstein1$year), end=max(goldstein1$year))
         decomposition <- mstl(univariate)
         p <- autoplot(decomposition) +
           ggtitle("Trend Decomposition of Conflict") +
@@ -182,11 +193,12 @@ server <- function(input, output) {
       xpredictors <- na.roughfix(xpredictors)
       xpredictors <- scale(xpredictors)
       
-      new_xreg <- better_apply(xpredictors, years) #apply(xpredictors, 2, function(u) var_extend(u,years))
+      yrrange <- c(min(goldstein$year), max(goldstein$year))
+      new_xreg <- better_apply(xpredictors, years, yrrange) #apply(xpredictors, 2, function(u) var_extend(u,years))
       predicted <- backup_arima(univariate, xreg_p=data.matrix(xpredictors), new_xreg_p=new_xreg, years_p=years)
       
       p <- autoplot(predicted) +
-        ylim(0, NA) +
+        ylim(0, NA) + geom_vline(xintercept=2019, color="red") +
         xlab("Year") + ylab("Weighted Sum of Negative Goldstein Scores") +
         theme(plot.title = element_text(size = 14, face = "bold"),
               text = element_text(size = 12),
