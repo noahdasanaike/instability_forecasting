@@ -1,0 +1,204 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r one}
+library(tidyverse)
+library(WDI)
+library(janitor)
+library(countrycode)
+library(readxl)
+library(MASS)
+library(tidyimpute)
+
+demean.mat <- function(xmat) {
+  apply(xmat, 2, function(z) z - mean(z))
+}
+```
+
+```{r conflict}
+conflict_data <- read_csv("conflict_data.csv")
+
+full_conflict <- tibble(country_code = unique(conflict_data$country_code)) %>% 
+  slice(rep(1:n(), each = 31)) %>%
+  group_by(country_code) %>%
+  mutate(year = row_number() + 1988) %>%
+  merge(conflict_data, by = c("country_code", "year"), all.x = TRUE) %>%
+  rowwise() %>%
+  mutate(conflict = mean(c(acled_total, ucdp_total, gdelt_total), na.rm = TRUE)) %>%
+  pivot_wider(names_from = event_type, values_from = conflict) %>%
+  dplyr::select(-c(acled_total, ucdp_total, gdelt_total, `NA`)) %>%
+  drop_na(country_code) %>%
+  rename(protest = `14`, assault = `18`, fight = `19`) %>% 
+  group_by(country_code, year) %>% 
+  summarise_all(funs(first(na.omit(.))))
+
+full_conflict[is.na(full_conflict)] <- 0
+```
+
+```{r merge}
+pca_data <- full_conflict[3:5]
+
+pcr_matrix <- as.matrix(pca_data)
+
+x <- NULL
+
+for (i in 2:15){
+  k <- kmeans(pca_data, i, nstart = 25, iter.max = 30)["tot.withinss"][[1]]
+  x <- rbind(x, c(i, k))
+}
+
+x <- x %>%
+  as.tibble()
+
+ggplot(data = x, aes(x = V1, y = V2)) +
+  geom_point()
+
+
+cluster <- kmeans(pca_data, 5, nstart = 25)
+
+
+pca <- prcomp(pca_data)
+
+
+
+test <- tibble(country_name = full_conflict$country_code,
+               year = full_conflict$year,
+               pca1 =  pca$x[,1],
+               pca2 = pca$x[,2],
+               cluster = cluster$cluster)
+
+
+
+test %>%
+  filter(year == 2016) %>%
+  mutate(cluster = as.factor(cluster)) %>%
+  ggplot(aes(x = pca1, y = pca2, group = cluster, color = cluster)) +
+  geom_text(aes(label = country_name))
+```
+
+```{r indicators, warning = FALSE, message = FALSE}
+peace <- read_xls("peace_months.xls") %>%
+  dplyr::select(year, country, peaceyears) %>%
+  mutate(iso3 = countrycode(country, origin = "country.name", destination = "iso3c")) %>%
+  drop_na(iso3) %>%
+  mutate(year_ahead = ifelse(lead(peaceyears) > 0, 0, 1)) %>%
+  mutate(year_ahead = ifelse(is.na(lead(peaceyears)), 1, year_ahead)) %>%
+  dplyr::select(year, year_ahead, iso3) 
+
+
+
+indicators <- WDIsearch()
+
+# new_cache = WDIcache()
+# dat = WDI(cache = new_cache, 
+#           indicator = c(unlist(indicators[, 1])),
+#           country = "all", start = 1989, end = 2019)
+
+test_for_merge <- test %>%
+  rename(iso3 = country_name) %>%
+  dplyr::select(iso3, cluster, year)
+
+dat <- readRDS("wdi_data.RDS")
+
+dat <- dat %>%
+  clean_names() %>% 
+  mutate(iso3 = countrycode(iso2c, origin = "iso2c", destination = "iso3c")) %>%
+  dplyr::select(-c(country, iso2c))
+
+merged <- merge(dat, peace, by = c("iso3", "year")) %>%
+  drop_na(iso3) %>%
+  merge(test_for_merge, by = c("iso3", "year"))
+
+nas <- merged %>% keep(~all(is.na(.x))) %>% names
+
+merged <- merged[ , -which(names(merged) %in% c(unlist(nas)))]
+
+merged <- merged %>% 
+  drop_na(year_ahead) %>%
+  group_by(year, cluster, year_ahead) %>% 
+  mutate_each(funs(replace(., which(is.na(.)),
+                           mean(., na.rm=TRUE)))) %>%
+  group_by(iso3) %>%
+  mutate_each(funs(replace(., which(is.nan(.)),
+                           mean(., na.rm=TRUE))))
+
+merge_filter <- merged %>%
+  filter(year < 2016)
+
+
+no_na <- merge_filter[,3:(ncol(merge_filter) - 1)] %>%
+  drop_na() 
+
+full.model <- lm(year_ahead~., data = no_na)
+
+step.model <- stepAIC(full.model, direction = "both", 
+                      trace = FALSE)
+
+final_data <- merge_filter[ , which(names(merge_filter) %in% c(unlist(names(step.model$coefficients))))]
+
+final_data$iso3 <- merge_filter$iso3
+final_data$year <- merge_filter$year
+
+final_data <- final_data %>% 
+  mutate(year = as.numeric(year)) %>%
+  inner_join(peace, by = c("year", "iso3"))
+
+# saveRDS(final_data, "final_data.RDS")
+```
+
+
+```{r arima}
+new_data <- merged[ , which(names(merged) %in% c(unlist(names(step.model$coefficients))))]
+new_data$year <- merged$year
+new_data$iso3 <- merged$iso3
+predictions <- new_data 
+
+predictions$pred <- 0
+for (i in 2:nrow(predictions)){
+  predictions[i,]$pred = predict(step.model, predictions[i - 1, 1:105], type = "response")
+}
+
+final_pred <- predictions %>%
+  dplyr::select(pred, year, iso3) %>%
+  merge(peace, by = c("iso3", "year")) %>%
+  rename(actual = year_ahead, 
+         prob = pred) %>%
+  slice(-c(1))
+
+index = 0
+best_cutoff <- 0
+best_accuracy <- 0
+
+while (index < 1)
+{
+  cutoff <- final_pred %>%
+    rowwise() %>%
+    mutate(pred = ifelse(prob > index, 1, 0))
+  
+  accuracy <- mean(cutoff$pred == cutoff$actual)
+  
+  if (accuracy > best_accuracy){
+    best_cutoff <- index
+    best_accuracy <- accuracy
+  }
+  
+  index = index + 0.01
+}
+
+ultimate_predictions <- final_pred %>%
+    rowwise() %>%
+    mutate(pred = ifelse(prob > best_cutoff, 1, 0)) %>%
+  mutate(country_name = countrycode(iso3, origin = "iso3c", destination = "country.name"))
+
+ultimate_predictions %>%
+  filter(iso3 %in% c("AFG", "SYR", "YEM", "DNK", "SWE", "FRA", "USA", "CAN")) %>%
+  ggplot(aes(x = year, y = prob)) +
+  geom_line(aes(group = iso3, color = country_name)) +
+  labs(y = "Change from Previous Year",
+       x = "Year") +
+  geom_hline(yintercept = best_cutoff) +
+  theme(axis.text.x = element_text(angle = 90))
+
+```
