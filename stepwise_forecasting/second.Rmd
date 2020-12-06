@@ -84,7 +84,7 @@ peace <- read_xls("peace_months.xls") %>%
   mutate(year_ahead = ifelse(is.na(lead(peaceyears)), 1, year_ahead)) %>%
   mutate(current_year = ifelse(peaceyears > 0, 0, 1)) %>%
   mutate(current_year = ifelse(is.na(peaceyears), 1, current_year)) %>%
-  dplyr::select(year, year_ahead, iso3, current_year) 
+  dplyr::select(year, year_ahead, iso3, current_year, peaceyears) 
 
 indicators <- WDIsearch()
 
@@ -145,9 +145,10 @@ randomly sampled elastic net, highest "accuracy" but only because it ignores 1s.
 train_data <- sample(1:nrow(no_na), (nrow(no_na) * .8))
 test_data <- which(!1:nrow(no_na) %in% train_data)
 
-x <- no_na[, 1:143]
+x <- no_na %>%
+  dplyr::select(-c(cluster, year_ahead))
 
-y <- merge_filter$year_ahead
+y <- no_na$year_ahead
 
 foldid <- sample(1:10, size = length( y[train_data]), replace = TRUE)
 
@@ -319,7 +320,7 @@ comparison <- pred %>%
   rowwise() %>%
   mutate(pred = ifelse(pred > 0.99, 1, 0))
  
-comparison$actual <- y[test_data]
+comparison$actual <- test_y
  
 mean(comparison$actual == comparison$pred)
 ```
