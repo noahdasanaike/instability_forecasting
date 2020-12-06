@@ -121,7 +121,7 @@ merged <- merged %>%
 
 merge_filter <- merged 
 
-no_na <- merge_filter[,2:(ncol(merge_filter) - 1)]
+no_na <- merge_filter[,3:154]
 no_na <- no_na[-c(which_are_bijection(no_na))]
 
 no_na <- no_na %>%
@@ -141,12 +141,12 @@ train_data <- 1:4816
 # testing data is set from 1989 to 2015
 test_data <- 4817:5008
 
-x <- no_na[, 2:146]
+x <- no_na
 
 x <- x %>%
-  dplyr::select(-c(year_ahead))
+  dplyr::select(-c(year_ahead, cluster))
 
-y <- merge_filter$year_ahead
+y <- no_na$year_ahead
 
 # alpha_i <- 0
 # best_i <- 0
@@ -235,7 +235,7 @@ while (index < 2)
 
 comparison <- pred %>%
   rowwise() %>%
-  mutate(pred = ifelse(pred > 0.4, 1, 0))
+  mutate(pred = ifelse(pred > 0.78, 1, 0))
 
 comparison$actual <- y[test_data]
 
