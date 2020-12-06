@@ -3,7 +3,7 @@ title: "Neural"
 output: html_notebook
 ---
 
-```{r one}
+```{r one, warning=FALSE}
 library(tidyverse)
 library(WDI)
 library(janitor)
@@ -12,6 +12,7 @@ library(readxl)
 library(MASS)
 library(dataPreparation)
 library(glmnet)
+library(rworldmap)
 
 demean.mat <- function(xmat) {
   apply(xmat, 2, function(z) z - mean(z))
@@ -324,7 +325,7 @@ best_accuracy <- 0
 
 comparison <- pred %>%
   rowwise() %>%
-  mutate(pred = ifelse(pred > 0.4, 1, 0))
+  mutate(pred = ifelse(pred > 0.24, 1, 0))
 
 comparison$actual <- y[test_data]
 
@@ -335,3 +336,37 @@ mean(subset(comparison, year == 2015)$actual == subset(comparison, year == 2015)
 mean(subset(comparison, year == 2016)$actual == subset(comparison, year == 2016)$pred)
 ```
 
+
+```{r heatmaps}
+
+f1score <- function(predicted, y_true) {
+  true_p <- sum(predicted==y_true & predicted==1)
+  true_n <- sum(predicted==y_true & predicted==0)
+  false_p <- sum(predicted==1 & y_true==0)
+  false_n <- sum(predicted==0 & y_true==1)
+  accuracy <- mean(predicted==y_true)
+  precision <- true_p/(true_p+false_p)
+  recall <- true_p/(true_p+false_n)
+  f1 <- 2/(1/precision + 1/recall)
+  return(list(Accuracy=accuracy, Precision=precision, Recall=recall, F1=f1))
+}
+
+renderHeatmap <- function(data, year) {
+    mapped_data <- data[data$year==year,]
+    mapped_data <- joinCountryData2Map(mapped_data, joinCode="ISO3", nameJoinColumn="iso3")
+    par(mai=c(1,0,0.5,0),xaxs="i",yaxs="i")
+    mapCountryData(mapped_data, nameColumnToPlot = "prediction", catMethod="categorical",
+                   mapTitle=paste("Historical Conflict Intensity by Country in ", year, sep=""),
+                   missingCountryCol="white")
+}
+
+
+country_preds <- comparison
+names(country_preds)[1] = "prediction"
+country_preds["iso3"] = arrange(merge_filter, year)$iso3[test_data]
+
+renderHeatmap(country_preds, 2014)
+
+year_filter <- country_preds[country_preds$year==2016,]
+f1score(year_filter$prediction, year_filter$actual)
+```
