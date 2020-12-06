@@ -12,10 +12,12 @@ library(readxl)
 library(MASS)
 library(dataPreparation)
 library(glmnet)
-
-demean.mat <- function(xmat) {
-  apply(xmat, 2, function(z) z - mean(z))
-}
+library(DMwR)
+library(splitTools)
+library(ranger)
+library(Metrics)
+library(randomForest)
+library(party)
 ```
 
 ```{r conflict}
@@ -121,87 +123,36 @@ merged <- merged %>%
 
 merge_filter <- merged 
 
-no_na <- merge_filter[,3:154]
-no_na <- no_na[-c(which_are_bijection(no_na))]
+no_na <- merge_filter
+
+# bijections are from which_are_bijection(no_na)
+no_na <- no_na[-c(6, 14, 77, 78, 79, 111)]
+
+countries <- unique(merge_filter$iso3)
 
 no_na <- no_na %>%
-  mutate(year = as.numeric(year)) %>%
+  rowwise() %>%
+  mutate(iso3 = match(iso3, countries),
+         year = as.numeric(year)) %>%
   arrange(year)
 
 #################
 ```
 
-just 2016 vs 2014 to 2016:
+randomly sampled elastic net, highest "accuracy" but only because it ignores 1s...
 
-2016:
+```{r best accuracy}
+train_data <- sample(1:nrow(no_na), (nrow(no_na) * .8))
+test_data <- which(!1:nrow(no_na) %in% train_data)
 
-```{r model_one}
-train_data <- 1:4816
+x <- no_na[, 1:143]
 
-# testing data is set from 1989 to 2015
-test_data <- 4817:5008
+y <- merge_filter$year_ahead
 
-x <- no_na
+foldid <- sample(1:10, size = length( y[train_data]), replace = TRUE)
 
-x <- x %>%
-  dplyr::select(-c(year_ahead, cluster))
+mod <- cv.glmnet(as.matrix(x[train_data, ]), y[train_data], alpha = 0.9, family = "binomial")
 
-y <- no_na$year_ahead
-
-# alpha_i <- 0
-# best_i <- 0
-# best_lambda <- 100
-# 
-# foldid <- sample(1:10, size = length( y[train_data]), replace = TRUE)
-# 
-#  for (p in 1:10){
-#    mod <- cv.glmnet(as.matrix(x[train_data, ]), y[train_data], alpha = alpha_i,
-#                     family = "binomial")
-#    lambda.min <- mod$lambda.min
-# 
-#    yhat <- predict(mod, newx = as.matrix(x[test_data, ]),
-#  											  s = lambda.min,
-#  											  type = "response")
-# 
-#    pred <- yhat %>% tibble() %>% rename(pred = ".")
-# 
-#    index = min(pred)
-#    best_cutoff <- 0
-#    best_accuracy <- 0
-# 
-#    while (index < max(pred))
-#    {
-#      cutoff <- pred %>%
-#        rowwise() %>%
-#        mutate(pred = ifelse(pred > index, 1, 0))
-# 
-#      accuracy <- mean(cutoff$pred == y[test_data])
-# 
-#      if (accuracy > best_accuracy){
-#        best_cutoff <- index
-#        best_accuracy <- accuracy
-#      }
-# 
-#      index = index + 0.01
-#    }
-# 
-#    comparison <- pred %>%
-#        rowwise() %>%
-#        mutate(pred = ifelse(pred > best_cutoff, 1, 0))
-# 
-#    comparison$actual <- y[test_data]
-# 
-#    if (lambda.min < best_lambda){
-#        best_i <- alpha_i
-#        best_lambda <- lambda.min
-#      }
-# 
-#    alpha_i <- alpha_i + 0.1
-#  }
-
-# alpha value determined from cross-validation is 0.9
-
-mod <- cv.glmnet(as.matrix(x[train_data, ]), y[train_data], alpha = 0.9)
 lambda.min <- mod$lambda.min
 
 yhat <- predict(mod, newx = as.matrix(x[test_data, ]),
@@ -211,11 +162,10 @@ yhat <- predict(mod, newx = as.matrix(x[test_data, ]),
 pred <- yhat %>% tibble() %>% rename(pred = ".")
 
 index = min(pred)
-
 best_cutoff <- 0
 best_accuracy <- 0
 
-while (index < 2)
+while (index < max(pred))
 {
   cutoff <- pred %>%
   rowwise() %>%
@@ -231,107 +181,145 @@ while (index < 2)
   index = index + 0.01
 }
 
-# best_cutoff is like 0.4
 
 comparison <- pred %>%
   rowwise() %>%
-  mutate(pred = ifelse(pred > 0.78, 1, 0))
+  mutate(pred = ifelse(pred > best_cutoff, 1, 0))
 
 comparison$actual <- y[test_data]
 
 mean(comparison$actual == comparison$pred)
 ```
 
-```{r model}
-# training data is set from 1989 to 2013
-train_data <- 1:4432
+random forest
 
-# testing data is set from 2014 to 2016
-test_data <- 4433:5008
+```{r randomforest}
+train <- no_na %>%
+  ungroup() %>%
+  filter(year < 2016) %>%
+  dplyr::select(-c(cluster, year))
 
-x <- no_na[, 2:146]
+test <- no_na %>%
+  ungroup() %>%
+  filter(year == 2016) %>%
+  dplyr::select(-c(cluster, year))
 
-x <- x %>%
+test_more <- test %>%
   dplyr::select(-c(year_ahead))
 
-y <- merge_filter$year_ahead
+folds <- create_timefolds(train$year_ahead, k = 5)
 
-# alpha_i <- 0
-# best_i <- 0
-# best_lambda <- 100
-# 
-# foldid <- sample(1:10, size = length( y[train_data]), replace = TRUE)
-# 
-#  for (p in 1:10){
-#    mod <- cv.glmnet(as.matrix(x[train_data, ]), y[train_data], alpha = alpha_i,
-#                     family = "binomial")
-#    lambda.min <- mod$lambda.min
-# 
-#    yhat <- predict(mod, newx = as.matrix(x[test_data, ]),
-#  											  s = lambda.min,
-#  											  type = "response")
-# 
-#    pred <- yhat %>% tibble() %>% rename(pred = ".")
-# 
-#    index = min(pred)
-#    best_cutoff <- 0
-#    best_accuracy <- 0
-# 
-#    while (index < max(pred))
-#    {
-#      cutoff <- pred %>%
-#        rowwise() %>%
-#        mutate(pred = ifelse(pred > index, 1, 0))
-# 
-#      accuracy <- mean(cutoff$pred == y[test_data])
-# 
-#      if (accuracy > best_accuracy){
-#        best_cutoff <- index
-#        best_accuracy <- accuracy
-#      }
-# 
-#      index = index + 0.01
-#    }
-# 
-#    comparison <- pred %>%
-#        rowwise() %>%
-#        mutate(pred = ifelse(pred > best_cutoff, 1, 0))
-# 
-#    comparison$actual <- y[test_data]
-# 
-#    if (lambda.min < best_lambda){
-#        best_i <- alpha_i
-#        best_lambda <- lambda.min
-#      }
-# 
-#    alpha_i <- alpha_i + 0.1
-#  }
+valid_mtry <- numeric(ncol(train) - 1)
 
-# alpha value determined from cross-validation is 0.9
+for (i in seq_along(valid_mtry)) {
+  cv_mtry <- numeric()
+  for (fold in folds) {
+    fit <- ranger(year_ahead ~ ., data = train[fold$insample, ], mtry = i)
+    cv_mtry <- c(cv_mtry, 
+                 rmse(train[fold$outsample, "year_ahead"]$year_ahead, 
+                      predict(fit, train[fold$outsample, ])$predictions))
+  }
+  print(i)
+  print(mean(cv_mtry))
+  valid_mtry[i] <- mean(cv_mtry)
+}
 
-mod <- cv.glmnet(as.matrix(x[train_data, ]), y[train_data], alpha = 0.9)
-lambda.min <- mod$lambda.min
+best_mtry <- 0.2510958
 
-yhat <- predict(mod, newx = as.matrix(x[test_data, ]),
-                      s = lambda.min,
-                      type = "response")
-
-pred <- yhat %>% tibble() %>% rename(pred = ".")
+final_fit <- ranger(year_ahead ~ ., data = train, mtry = 102, importance = "impurity")
+pred <- predict(final_fit, test_more)$predictions
 
 index = min(pred)
 best_cutoff <- 0
 best_accuracy <- 0
 
-comparison <- pred %>%
+while (index < 1)
+{
+  cutoff <- pred %>%
+  tibble() %>%
+  rename(pred = ".") %>%
   rowwise() %>%
-  mutate(pred = ifelse(pred > 0.4, 1, 0))
+  mutate(pred = ifelse(pred > index, 1, 0))
 
-comparison$actual <- y[test_data]
+  accuracy <- mean(cutoff$pred == test$year_ahead)
 
-comparison$year <- no_na[4433:5008,]$year
+  if (accuracy > best_accuracy){
+    best_cutoff <- index
+    best_accuracy <- accuracy
+  }
 
-mean(subset(comparison, year == 2014)$actual == subset(comparison, year == 2014)$pred)
-mean(subset(comparison, year == 2015)$actual == subset(comparison, year == 2015)$pred)
-mean(subset(comparison, year == 2016)$actual == subset(comparison, year == 2016)$pred)
+  index = index + 0.01
+}
+
+predictions <- pred %>%
+  tibble() %>%
+  rename(pred = ".") %>%
+  rowwise() %>%
+  mutate(pred = ifelse(pred > best_cutoff, 1, 0))
+
+predictions$actual <- test$year_ahead
+
 ```
 
+This is a near-LASSO elastic net that over-samples cases of violence in order to account for imbalance
+
+```{r over_sampling}
+x <- no_na %>%
+  mutate(year_ahead = as.factor(year_ahead)) %>%
+  as.data.frame()
+ 
+train_x <- SMOTE(year_ahead~., subset(x, year < 2016), perc.over = 800, perc.under = 100)
+ 
+train_y <- train_x$year_ahead
+ 
+train_x <- train_x %>%
+  dplyr::select(-c(year, year_ahead, cluster))
+ 
+mod <- cv.glmnet(as.matrix(train_x), train_y, alpha = 0.9, family = "binomial")
+lambda.min <- mod$lambda.min
+ 
+ 
+test_x <- x %>%
+  filter(year == 2016)
+ 
+test_y <- test_x$year_ahead
+ 
+test_x <- test_x %>%
+  dplyr::select(-c(year, year_ahead, cluster))
+ 
+ 
+yhat <- predict(mod, newx = as.matrix(test_x),
+                      s = lambda.min,
+                      type = "response")
+ 
+pred <- yhat %>% tibble() %>% rename(pred = ".")
+ 
+index = min(pred)
+ 
+best_cutoff <- 0
+best_accuracy <- 0
+ 
+while (index < 2)
+{
+  cutoff <- pred %>%
+  rowwise() %>%
+  mutate(pred = ifelse(pred > index, 1, 0))
+ 
+  accuracy <- mean(cutoff$pred == test_y)
+ 
+  if (accuracy > best_accuracy){
+    best_cutoff <- index
+    best_accuracy <- accuracy
+  }
+ 
+  index = index + 0.01
+}
+ 
+comparison <- pred %>%
+  rowwise() %>%
+  mutate(pred = ifelse(pred > 0.99, 1, 0))
+ 
+comparison$actual <- y[test_data]
+ 
+mean(comparison$actual == comparison$pred)
+```
