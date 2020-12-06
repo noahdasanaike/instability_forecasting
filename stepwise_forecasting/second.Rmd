@@ -131,6 +131,117 @@ no_na <- no_na %>%
 #################
 ```
 
+just 2016 vs 2014 to 2016:
+
+2016:
+
+```{r model_one}
+train_data <- 1:4816
+
+# testing data is set from 1989 to 2015
+test_data <- 4817:5008
+
+x <- no_na[, 2:146]
+
+x <- x %>%
+  dplyr::select(-c(year_ahead))
+
+y <- merge_filter$year_ahead
+
+# alpha_i <- 0
+# best_i <- 0
+# best_lambda <- 100
+# 
+# foldid <- sample(1:10, size = length( y[train_data]), replace = TRUE)
+# 
+#  for (p in 1:10){
+#    mod <- cv.glmnet(as.matrix(x[train_data, ]), y[train_data], alpha = alpha_i,
+#                     family = "binomial")
+#    lambda.min <- mod$lambda.min
+# 
+#    yhat <- predict(mod, newx = as.matrix(x[test_data, ]),
+#  											  s = lambda.min,
+#  											  type = "response")
+# 
+#    pred <- yhat %>% tibble() %>% rename(pred = ".")
+# 
+#    index = min(pred)
+#    best_cutoff <- 0
+#    best_accuracy <- 0
+# 
+#    while (index < max(pred))
+#    {
+#      cutoff <- pred %>%
+#        rowwise() %>%
+#        mutate(pred = ifelse(pred > index, 1, 0))
+# 
+#      accuracy <- mean(cutoff$pred == y[test_data])
+# 
+#      if (accuracy > best_accuracy){
+#        best_cutoff <- index
+#        best_accuracy <- accuracy
+#      }
+# 
+#      index = index + 0.01
+#    }
+# 
+#    comparison <- pred %>%
+#        rowwise() %>%
+#        mutate(pred = ifelse(pred > best_cutoff, 1, 0))
+# 
+#    comparison$actual <- y[test_data]
+# 
+#    if (lambda.min < best_lambda){
+#        best_i <- alpha_i
+#        best_lambda <- lambda.min
+#      }
+# 
+#    alpha_i <- alpha_i + 0.1
+#  }
+
+# alpha value determined from cross-validation is 0.9
+
+mod <- cv.glmnet(as.matrix(x[train_data, ]), y[train_data], alpha = 0.9)
+lambda.min <- mod$lambda.min
+
+yhat <- predict(mod, newx = as.matrix(x[test_data, ]),
+                      s = lambda.min,
+                      type = "response")
+
+pred <- yhat %>% tibble() %>% rename(pred = ".")
+
+index = min(pred)
+
+best_cutoff <- 0
+best_accuracy <- 0
+
+while (index < 2)
+{
+  cutoff <- pred %>%
+  rowwise() %>%
+  mutate(pred = ifelse(pred > index, 1, 0))
+
+  accuracy <- mean(cutoff$pred == y[test_data])
+
+  if (accuracy > best_accuracy){
+    best_cutoff <- index
+    best_accuracy <- accuracy
+  }
+
+  index = index + 0.01
+}
+
+# best_cutoff is like 0.4
+
+comparison <- pred %>%
+  rowwise() %>%
+  mutate(pred = ifelse(pred > 0.4, 1, 0))
+
+comparison$actual <- y[test_data]
+
+mean(comparison$actual == comparison$pred)
+```
+
 ```{r model}
 # training data is set from 1989 to 2013
 train_data <- 1:4432
@@ -223,3 +334,4 @@ mean(subset(comparison, year == 2014)$actual == subset(comparison, year == 2014)
 mean(subset(comparison, year == 2015)$actual == subset(comparison, year == 2015)$pred)
 mean(subset(comparison, year == 2016)$actual == subset(comparison, year == 2016)$pred)
 ```
+
