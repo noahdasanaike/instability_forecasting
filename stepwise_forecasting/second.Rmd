@@ -139,7 +139,7 @@ no_na <- no_na %>%
 #################
 ```
 
-randomly sampled elastic net, highest "accuracy" but only because it ignores 1s...
+randomly sampled elastic net
 
 ```{r best accuracy}
 train_data <- sample(1:nrow(no_na), (nrow(no_na) * .8))
@@ -212,18 +212,18 @@ folds <- create_timefolds(train$year_ahead, k = 5)
 
 valid_mtry <- numeric(ncol(train) - 1)
 
-for (i in seq_along(valid_mtry)) {
-  cv_mtry <- numeric()
-  for (fold in folds) {
-    fit <- ranger(year_ahead ~ ., data = train[fold$insample, ], mtry = i)
-    cv_mtry <- c(cv_mtry, 
-                 rmse(train[fold$outsample, "year_ahead"]$year_ahead, 
-                      predict(fit, train[fold$outsample, ])$predictions))
-  }
-  print(i)
-  print(mean(cv_mtry))
-  valid_mtry[i] <- mean(cv_mtry)
-}
+# for (i in seq_along(valid_mtry)) {
+#   cv_mtry <- numeric()
+#   for (fold in folds) {
+#     fit <- ranger(year_ahead ~ ., data = train[fold$insample, ], mtry = i)
+#     cv_mtry <- c(cv_mtry, 
+#                  rmse(train[fold$outsample, "year_ahead"]$year_ahead, 
+#                       predict(fit, train[fold$outsample, ])$predictions))
+#   }
+#   print(i)
+#   print(mean(cv_mtry))
+#   valid_mtry[i] <- mean(cv_mtry)
+# }
 
 best_mtry <- 0.2510958
 
