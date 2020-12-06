@@ -80,7 +80,9 @@ peace <- read_xls("peace_months.xls") %>%
   drop_na(iso3) %>%
   mutate(year_ahead = ifelse(lead(peaceyears) > 0, 0, 1)) %>%
   mutate(year_ahead = ifelse(is.na(lead(peaceyears)), 1, year_ahead)) %>%
-  dplyr::select(year, year_ahead, iso3) 
+  mutate(current_year = ifelse(peaceyears > 0, 0, 1)) %>%
+  mutate(current_year = ifelse(is.na(peaceyears), 1, current_year)) %>%
+  dplyr::select(year, year_ahead, iso3, current_year) 
 
 indicators <- WDIsearch()
 
@@ -117,75 +119,82 @@ merged <- merged %>%
   mutate_each(funs(replace(., which(is.nan(.)),
                            mean(., na.rm=TRUE))))
 
-merge_filter <- merged %>%
-  filter(year < 2016)
+merge_filter <- merged 
 
-no_na <- merge_filter[,3:(ncol(merge_filter) - 1)]
+no_na <- merge_filter[,2:(ncol(merge_filter) - 1)]
 no_na <- no_na[-c(which_are_bijection(no_na))]
+
+no_na <- no_na %>%
+  mutate(year = as.numeric(year)) %>%
+  arrange(year)
 
 #################
 ```
 
 ```{r model}
-train_data <- sample(1:nrow(no_na), (nrow(no_na) * .8))
-test_data <- which(!1:nrow(no_na) %in% train_data)
+# training data is set from 1989 to 2013
+train_data <- 1:4432
 
-x <- no_na[, 1:143]
+# testing data is set from 2014 to 2016
+test_data <- 4433:5008
+
+x <- no_na[, 2:146]
+
+x <- x %>%
+  dplyr::select(-c(year_ahead))
 
 y <- merge_filter$year_ahead
 
-alpha_i <- 0
-best_i <- 0
-strongest_accuracy <- 0
-
-foldid <- sample(1:10, size = length( y[train_data]), replace = TRUE)
-
-# for (p in 1:10){
-#   mod <- cv.glmnet(as.matrix(x[train_data, ]), y[train_data], alpha = alpha_i,
-#                    family = "binomial")
-#   lambda.min <- mod$lambda.min
+# alpha_i <- 0
+# best_i <- 0
+# best_lambda <- 100
 # 
-#   yhat <- predict(mod, newx = as.matrix(x[test_data, ]),
-# 											  s = lambda.min,
-# 											  type = "response")
+# foldid <- sample(1:10, size = length( y[train_data]), replace = TRUE)
 # 
-#   pred <- yhat %>% tibble() %>% rename(pred = ".")
+#  for (p in 1:10){
+#    mod <- cv.glmnet(as.matrix(x[train_data, ]), y[train_data], alpha = alpha_i,
+#                     family = "binomial")
+#    lambda.min <- mod$lambda.min
 # 
-#   index = min(pred)
-#   best_cutoff <- 0
-#   best_accuracy <- 0
+#    yhat <- predict(mod, newx = as.matrix(x[test_data, ]),
+#  											  s = lambda.min,
+#  											  type = "response")
 # 
-#   while (index < max(pred))
-#   {
-#     cutoff <- pred %>%
-#       rowwise() %>%
-#       mutate(pred = ifelse(pred > index, 1, 0))
-#   
-#     accuracy <- mean(cutoff$pred == y[test_data])
-#   
-#     if (accuracy > best_accuracy){
-#       best_cutoff <- index
-#       best_accuracy <- accuracy
-#     }
-#   
-#     index = index + 0.01
-#   }
+#    pred <- yhat %>% tibble() %>% rename(pred = ".")
 # 
-#   comparison <- pred %>%
-#       rowwise() %>%
-#       mutate(pred = ifelse(pred > best_cutoff, 1, 0))
+#    index = min(pred)
+#    best_cutoff <- 0
+#    best_accuracy <- 0
 # 
-#   comparison$actual <- y[test_data]
+#    while (index < max(pred))
+#    {
+#      cutoff <- pred %>%
+#        rowwise() %>%
+#        mutate(pred = ifelse(pred > index, 1, 0))
 # 
-#   strong_accuracy <- mean(comparison$actual == comparison$pred)
-#   
-#   if (strong_accuracy > strongest_accuracy){
-#       best_i <- alpha_i
-#       strongest_accuracy <- strong_accuracy
-#     }
-#   
-#   alpha_i <- alpha_i + 0.1
-# }
+#      accuracy <- mean(cutoff$pred == y[test_data])
+# 
+#      if (accuracy > best_accuracy){
+#        best_cutoff <- index
+#        best_accuracy <- accuracy
+#      }
+# 
+#      index = index + 0.01
+#    }
+# 
+#    comparison <- pred %>%
+#        rowwise() %>%
+#        mutate(pred = ifelse(pred > best_cutoff, 1, 0))
+# 
+#    comparison$actual <- y[test_data]
+# 
+#    if (lambda.min < best_lambda){
+#        best_i <- alpha_i
+#        best_lambda <- lambda.min
+#      }
+# 
+#    alpha_i <- alpha_i + 0.1
+#  }
 
 # alpha value determined from cross-validation is 0.9
 
@@ -204,9 +213,13 @@ best_accuracy <- 0
 
 comparison <- pred %>%
   rowwise() %>%
-  mutate(pred = ifelse(pred > 0.51, 1, 0))
+  mutate(pred = ifelse(pred > 0.4, 1, 0))
 
 comparison$actual <- y[test_data]
 
-mean(comparison$actual == comparison$pred)
+comparison$year <- no_na[4433:5008,]$year
+
+mean(subset(comparison, year == 2014)$actual == subset(comparison, year == 2014)$pred)
+mean(subset(comparison, year == 2015)$actual == subset(comparison, year == 2015)$pred)
+mean(subset(comparison, year == 2016)$actual == subset(comparison, year == 2016)$pred)
 ```
