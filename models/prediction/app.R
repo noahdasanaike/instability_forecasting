@@ -72,12 +72,8 @@ goldstein_data <- goldstein_data[goldstein_data$year!=2020,]
 
 predictors <- read.csv("country_predictors.csv")
 predictors$urban_perc <- as.numeric(predictors$urban_perc)
-#p_vars2 <- predictors[predictors$country_name %in% c("Afghanistan", "Egypt", "Russia", "Syria", "Finland", "Switzerland", "Denmark")]
 p_vars <- subset(predictors, select=-c(country_code, year, country_name, gdp_cap, pop))
 cor(p_vars, use="pairwise.complete.obs")
-
-
-
 
 'predictors <- predictors[predictors$country_code==country,]
 predictors <- subset(predictors, select=-c(country_code, country_name, gdp_cap, pop, gdp_cap_growth_rent, gdp_cap_growth_no_rent))
@@ -161,7 +157,6 @@ ui <- fluidPage(
            plotOutput("predictionPlot")
         )
     )
-    
 )
 
 # Define server logic

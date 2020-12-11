@@ -19,7 +19,7 @@ demean.mat <- function(xmat) {
 }
 
 library(DMwR)
-library(splitTools)
+#library(splitTools)
 library(ranger)
 library(Metrics)
 library(randomForest)
@@ -202,6 +202,69 @@ f1score(comparison$pred, comparison$actual)
 coef(mod)
 ```
 
+```{r all data up to 2013 as train}
+#train_data <- sample(1:nrow(no_na), (nrow(no_na) * .8))
+#test_data <- which(!1:nrow(no_na) %in% train_data)
+
+train_data <- which(no_na$year<2014)
+test_data <- which(no_na$year>=2014)
+
+x <- no_na %>%
+  dplyr::select(-c(cluster, year_ahead))
+
+y <- no_na$year_ahead
+
+foldid <- sample(1:10, size = length( y[train_data]), replace = TRUE)
+
+mod <- cv.glmnet(as.matrix(x[train_data, ]), y[train_data], alpha = 0.9, family = "binomial")
+
+lambda.min <- mod$lambda.min
+
+yhat <- predict(mod, newx = as.matrix(x[test_data, ]),
+                      s = lambda.min,
+                      type = "response")
+
+pred <- yhat %>% tibble() %>% rename(pred = ".")
+
+index = min(pred)
+best_cutoff <- 0
+best_accuracy <- 0
+
+while (index < max(pred))
+{
+  cutoff <- pred %>%
+  rowwise() %>%
+  mutate(pred = ifelse(pred > index, 1, 0))
+
+  accuracy <- mean(cutoff$pred == y[test_data])
+  accuracy <- f1score(cutoff$pred, y[test_data])$AUC
+
+  if (accuracy > best_accuracy){
+    best_cutoff <- index
+    best_accuracy <- accuracy
+  }
+
+  index = index + 0.01
+}
+
+
+comparison <- pred %>%
+  rowwise() %>%
+  mutate(pred = ifelse(pred > best_cutoff, 1, 0))
+
+pred_probs <- pred
+
+comparison$actual <- y[test_data]
+
+mean(comparison$actual == comparison$pred)
+
+f1score(comparison$pred, comparison$actual)
+
+coef(mod)
+```
+
+
+
 random forest
 
 ```{r randomforest}
@@ -295,9 +358,9 @@ renderHeatmap <- function(data, year, coltoplot) {
     mapped_data <- data[data$year==year,]
     mapped_data <- joinCountryData2Map(mapped_data, joinCode="ISO3", nameJoinColumn="iso3")
     par(mai=c(1,0,0.5,0),xaxs="i",yaxs="i")
-    mapCountryData(mapped_data, nameColumnToPlot = coltoplot, catMethod="categorical",
-                   mapTitle=paste("Predicted Conflict by Country in ", year, sep=""),
-                   missingCountryCol="white")
+    mapCountryData(mapped_data, nameColumnToPlot = coltoplot, catMethod="fixedWidth",
+                   mapTitle=paste("Difference in Predicted vs Actual Conflict by Country in ", year, sep=""),
+                   missingCountryCol="white", colourPalette="diverging") #brewer.pal(10, "YlOrRd"))
 }
 
 
@@ -305,12 +368,21 @@ country_preds <- comparison
 names(country_preds)[1] = "prediction"
 country_preds["iso3"] = arrange(merge_filter, year)$iso3[test_data]
 country_preds["year"] = no_na$year[test_data]
+renderHeatmap(country_preds, 2015, "prediction")
+
+pred_probs_plot <- pred_probs
+names(pred_probs_plot)[1] = "prediction"
+pred_probs_plot["iso3"] = arrange(merge_filter, year)$iso3[test_data]
+pred_probs_plot["year"] = no_na$year[test_data]
+renderHeatmap(pred_probs_plot, 2016, "prediction")
 
 delta <- country_preds
 delta["diff"] = delta$prediction-delta$actual
 renderHeatmap(delta, 2014, "diff")
 
-renderHeatmap(country_preds, 2015, "prediction")
+delta <- pred_probs_plot
+delta["diff"] = delta$prediction-country_preds$actual
+renderHeatmap(delta, 2016, "diff")
 
 year_filter <- country_preds[country_preds$year==2016,]
 f1score(year_filter$prediction, year_filter$actual)

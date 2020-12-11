@@ -12,6 +12,7 @@ library(countrycode)
 library(ggplot2)
 library(plyr)
 library(data.table)
+library(rworldmap)
 '%notin%' <- Negate('%in%')
 
 #rsconnect::deployApp()
